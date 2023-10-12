@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordSense</title>
+    <style>
+      body {
+        font-family: 'Arial', sans-serif;
+        background-color: #2e353d;
+        color: #61dafb;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 15px;
+        border: 2px solid #61dafb;
+        padding: 10px 20px;
+        border-radius: 10px;
+      }
+
+      button {
+        padding: 10px 20px;
+        background-color: #61dafb;
+        border: none;
+        border-radius: 8px;
+        color: #2e353d;
+        font-weight: bold;
+        margin-right: 10px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+
+      button:hover {
+        background-color: #4fa8d4;
+      }
+
+      #results {
+        margin-top: 20px;
+        padding: 20px;
+        border-radius: 10px;
+        width: 80%;
+        background-color: #39424e;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      #definition {
+        margin-top: 20px;
+        font-weight: 600;
+        color: #FFFFFF;
+        list-style-type: none;
+        padding-left: 0;
+      }
+
+      .uncommon {
+        color: #ffd700;
+        /* Gold color for highlighting */
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WordSense</h1>
+    <button id="recordingButton" onclick="toggleRecording()">🎙 Start Recording</button>
+    <div id="results"></div>
+    <ul id="definition"></ul>
+    <script>
+      let recognition;
+      let isRecording = false;
+      let definedWords = new Set();
+
+      function toggleRecording() {
+        if (isRecording) {
+          recognition.stop();
+          document.getElementById("recordingButton").textContent = "🎙 Start Recording";
+        } else {
+          startListening();
+          document.getElementById("recordingButton").textContent = "🎙 Stop Recording";
+        }
+        isRecording = !isRecording;
+      }
+
+      function startListening() {
+        recognition = new(window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.interimResults = true;
+        recognition.continuous = true;
+        recognition.onresult = async function(event) {
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              const finalizedWords = event.results[i][0].transcript.split(" ");
+              for (const word of finalizedWords) {
+                const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
+                if (!definedWords.has(cleanWord.toLowerCase())) {
+                  if (await isUncommon(cleanWord)) {
+                    document.getElementById("results").innerHTML += `
+					<span class="uncommon">${cleanWord}</span> `;
+                    fetchDefinition(cleanWord);
+                  } else {
+                    document.getElementById("results").innerHTML += cleanWord + " ";
+                  }
+                  definedWords.add(cleanWord.toLowerCase());
+                }
+              }
+            }
+          }
+        };
+        recognition.start();
+      }
+      async function isUncommon(word) {
+        try {
+          const response = await fetch(`https://api.datamuse.com/words?sp=${word}&md=f`);
+          const data = await response.json();
+          const frequency = data[0]?.tags ? parseFloat(data[0].tags[0].replace('f:', '')) : 1000;
+          return frequency < 2;
+        } catch (error) {
+          console.error('Error:', error);
+          return false;
+        }
+      }
+      async function fetchDefinition(word) {
+        try {
+          const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+          const data = await response.json();
+          let definition = data[0]?.meanings[0]?.definitions[0]?.definition;
+          if (definition.toLowerCase().includes(word)) {
+            definition = data[0]?.meanings[0]?.definitions[1]?.definition || "Definition not found";
+          }
+          if (definition) {
+            const li = document.createElement("li");
+            li.innerHTML = `
+					<strong>${word.charAt(0).toUpperCase() + word.slice(1)}</strong>: ${definition}`;
+            document.getElementById("definition").appendChild(li);
+          }
+        } catch (error) {
+          console.error('Error fetching definition for ' + word);
+        }
+      }
+    </script>
+  </body>
+</html>
